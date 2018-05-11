@@ -8,9 +8,10 @@ from OpsManage.models import *
 from django.db.models import Count
 from OpsManage.utils.ansible_api_v2 import ANSRunner
 from django.contrib.auth.models import Group,User
-from OpsManage.tasks import recordAssets
+from OpsManage.tasks.assets import recordAssets
 from django.contrib.auth.decorators import permission_required
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from OpsManage.utils.logger import logger
 
 def getBaseAssets():
     try:
@@ -32,14 +33,17 @@ def getBaseAssets():
     try:
         raidList = Raid_Assets.objects.all()
     except:
-        raidList = []   
+        raidList = []  
+    try:
+        projectList = Project_Assets.objects.all()
+    except:
+        projectList = []          
     return {"group":groupList,"service":serviceList,"zone":zoneList,
-            "line":lineList,"raid":raidList}
+            "line":lineList,"raid":raidList,'project':projectList}
 
 @login_required(login_url='/login')
 @permission_required('OpsManage.can_read_assets',login_url='/noperm/') 
 def assets_config(request):
-    
     return render(request,'assets/assets_config.html',{"user":request.user,"baseAssets":getBaseAssets()},
                               )
     
@@ -56,6 +60,8 @@ def assets_add(request):
 def assets_list(request):
     userList = User.objects.all()
     assetsList = Assets.objects.all().order_by("-id") 
+    for ds in assetsList:
+        ds.nks = ds.networkcard_assets_set.all() 
     assetOnline = Assets.objects.filter(status=0).count()
     assetOffline = Assets.objects.filter(status=1).count()
     assetMaintain = Assets.objects.filter(status=2).count()
@@ -86,6 +92,11 @@ def assets_view(request,aid):
         except:
             asset_disk = []
         try:
+            asset_nks = assets.networkcard_assets_set.all()
+        except Exception, ex:
+            asset_nks = [] 
+            logger.warn(msg="获取网卡设备资产失败: {ex}".format(ex=str(ex)))
+        try:
             asset_body = assets.server_assets                    
         except:
             return render(request,'assets/assets_view.html',{"user":request.user},
@@ -93,7 +104,8 @@ def assets_view(request,aid):
         return render(request,'assets/assets_view.html',{"user":request.user,"asset_type":assets.assets_type,
                                                             "asset_main":assets,"asset_body":asset_body,
                                                             "asset_ram":asset_ram,"asset_disk":asset_disk,
-                                                            "baseAssets":getBaseAssets(),'userList':userList},
+                                                            "baseAssets":getBaseAssets(),'userList':userList,
+                                                            "asset_nks":asset_nks},
                             )   
     else:
         try:
@@ -126,7 +138,8 @@ def assets_modf(request,aid):
             asset_disk = []
         try:
             asset_body = assets.server_assets                    
-        except:
+        except Exception ,ex:
+            logger.error(msg="修改资产失败: {ex}".format(ex=str(ex)))
             return render(request,'404.html',{"user":request.user},
                             )         
         return render(request,'assets/assets_modf.html',{"user":request.user,"asset_type":assets.assets_type,
@@ -154,9 +167,10 @@ def assets_facts(request,args=None):
         if genre == 'setup':
             try:
                 server_assets = Server_Assets.objects.get(id=request.POST.get('server_id'))
-                if server_assets.keyfile == 1:resource = [{"hostname": server_assets.ip, "port": int(server_assets.port)}] 
+                if server_assets.keyfile == 1:resource = [{"hostname": server_assets.ip, "port": int(server_assets.port),"username": server_assets.username}] 
                 else:resource = [{"hostname": server_assets.ip, "port": server_assets.port,"username": server_assets.username, "password": server_assets.passwd}]
-            except Exception,e:
+            except Exception,ex:
+                logger.error(msg="更新资产失败: {ex}".format(ex=str(ex)))
                 return  JsonResponse({'msg':"数据更新失败-查询不到该主机资料~","code":502})
             ANS = ANSRunner(resource)
             ANS.run_model(host_list=[server_assets.ip],module_name='setup',module_args="")
@@ -166,9 +180,11 @@ def assets_facts(request,args=None):
                     status = ds.get('status')
                     if status == 0:
                         try:
+                            assets = Assets.objects.get(id=server_assets.assets_id) 
                             Assets.objects.filter(id=server_assets.assets_id).update(sn=ds.get('serial'),model=ds.get('model'),
                                                                                      manufacturer=ds.get('manufacturer'))
-                        except Exception,e:
+                        except Exception, ex:
+                            logger.error(msg="获取服务器信息失败: {ex}".format(ex=str(ex)))
                             return  JsonResponse({'msg':"数据更新失败-查询不到该主机的资产信息","code":403})
                         try:
                             Server_Assets.objects.filter(id=server_id).update(cpu_number=ds.get('cpu_number'),kernel=ds.get('kernel'),
@@ -179,9 +195,28 @@ def assets_facts(request,args=None):
                                                                                   vcpu_number=ds.get('vcpu_number')
                                                                                   )
                             recordAssets.delay(user=str(request.user),content="修改服务器资产：{ip}".format(ip=server_assets.ip),type="server",id=server_assets.id)
-                        except Exception,e:
-                            print e
+                        except Exception, ex:
+                            logger.error(msg="更新服务器信息失败: {ex}".format(ex=str(ex)))
                             return JsonResponse({'msg':"数据更新失败-写入数据失败","code":400})
+                        for nk in ds.get('nks'):
+                            macaddress = nk.get('macaddress')
+                            count = NetworkCard_Assets.objects.filter(assets=assets,macaddress=macaddress).count()
+                            if count > 0:
+                                try:
+                                    NetworkCard_Assets.objects.filter(assets=assets,macaddress=macaddress).update(assets=assets,device=nk.get('device'),
+                                                                                                                       ip=nk.get('address'),module=nk.get('module'),
+                                                                                                                       mtu=nk.get('mtu'),active=nk.get('active'))
+                                except Exception, ex:
+                                    logger.warn(msg="更新服务器网卡信息失败: {ex}".format(ex=str(ex)))
+                            else:
+                                try:
+                                    NetworkCard_Assets.objects.create(assets=assets,device=nk.get('device'),
+                                                                  macaddress=nk.get('macaddress'),
+                                                                  ip=nk.get('address'),module=nk.get('module'),
+                                                                  mtu=nk.get('mtu'),active=nk.get('active'))
+                                except Exception, ex:
+                                    logger.warn(msg="写入服务器网卡信息失败: {ex}".format(ex=str(ex)))
+                            
                     else:
                         return JsonResponse({'msg':"数据更新失败-无法链接主机~","code":502})                    
                 return JsonResponse({'msg':"数据更新成功","code":200})
@@ -192,9 +227,10 @@ def assets_facts(request,args=None):
             try:
                 server_assets = Server_Assets.objects.get(id=server_id)
                 assets = Assets.objects.get(id=server_assets.assets_id)
-                if server_assets.keyfile == 1:resource = [{"hostname": server_assets.ip, "port": int(server_assets.port)}] 
+                if server_assets.keyfile == 1:resource = [{"hostname": server_assets.ip, "port": int(server_assets.port),"username": server_assets.username}] 
                 else:resource = [{"hostname": server_assets.ip, "port": server_assets.port,"username": server_assets.username, "password": server_assets.passwd}]
             except Exception,e:
+                logger.error(msg="更新硬件信息失败: {ex}".format(ex=ex))
                 return  JsonResponse({'msg':"数据更新失败-查询不到该主机资料~","code":502})
             ANS = ANSRunner(resource)
             ANS.run_model(host_list=[server_assets.ip],module_name='crawHw',module_args="")
@@ -211,7 +247,7 @@ def assets_facts(request,args=None):
                                                             device_status="Online"
                                                             )
         
-                                except Exception,e:
+                                except Exception, ex:
                                     return JsonResponse({'msg':"数据更新失败-写入数据失败","code":400})                        
                             else:
                                 try:
@@ -258,6 +294,7 @@ def assets_import(request):
     if request.method == "POST":
         f = request.FILES.get('import_file')
         filename = os.path.join(os.getcwd() + '/upload/',f.name)
+        if os.path.isdir(os.path.dirname(filename)) is not True:os.makedirs(os.path.dirname(filename))
         fobj = open(filename,'wb')
         for chrunk in f.chunks():
             fobj.write(chrunk)
@@ -291,48 +328,57 @@ def assets_import(request):
                       'status':int(data[10]),
                       'put_zone':int(data[11]),
                       'group':int(data[12]),
-                      'business':int(data[13]),
+                      'project':int(data[13]),
+                      'business':int(data[14]),
                       }
             if data[3]:assets['buy_time'] = xlrd.xldate.xldate_as_datetime(data[3],0)
             if data[4]:assets['expire_date'] = xlrd.xldate.xldate_as_datetime(data[4],0)
             if assets.get('assets_type') in ['vmser','server']:
                 server_assets = {
-                          'ip':data[14],
-                          'keyfile':data[15],
-                          'username':data[16],
-                          'passwd':data[17],
-                          'hostname':data[18],
-                          'port':data[19],
-                          'raid':data[20],
-                          'line':data[21],
+                          'ip':data[15],
+                          'keyfile':data[16],
+                          'username':data[17],
+                          'passwd':data[18],
+                          'hostname':data[19],
+                          'port':data[20],
+                          'raid':data[21],
+                          'line':data[22],
                           } 
             else:
                 net_assets = {
-                            'ip':data[14],
-                            'bandwidth':data[15],
-                            'port_number': data[16],
-                            'firmware':data[17],
-                            'cpu':data[18],
-                            'stone':data[19],
-                            'configure_detail': data[20]                              
+                            'ip':data[15],
+                            'bandwidth':data[16],
+                            'port_number': data[17],
+                            'firmware':data[18],
+                            'cpu':data[19],
+                            'stone':data[20],
+                            'configure_detail': data[21]                              
                               }                                                  
-            try:
-                count = Assets.objects.filter(name=assets.get('name')).count()
-                if count == 1:
-                    assetsObj = Assets.objects.get(name=assets.get('name'))
-                    Assets.objects.filter(name=assets.get('name')).update(**assets)
+            count = Assets.objects.filter(name=assets.get('name')).count()
+            if count == 1:
+                assetsObj = Assets.objects.get(name=assets.get('name'))
+                Assets.objects.filter(name=assets.get('name')).update(**assets)
+                try:
                     if assets.get('assets_type') in ['vmser','server']:
                         Server_Assets.objects.filter(assets=assetsObj).update(**server_assets)
                     elif assets.get('assets_type') in ['switch','route','printer','scanner','firewall','storage','wifi']:
                         Network_Assets.objects.filter(assets=assetsObj).update(**net_assets)
-                else:
-                    assetsObj = Assets.objects.create(**assets)     
-                    if assets.get('assets_type') in ['vmser','server']:
-                        Server_Assets.objects.create(assets=assetsObj,**server_assets)
-                    elif assets.get('assets_type') in ['switch','route','printer','scanner','firewall','storage','wifi']:
-                        Network_Assets.objects.create(assets=assetsObj,**net_assets)                                           
-            except Exception,e:
-                print e
+                except  Exception,ex:
+                    print ex
+            else:
+                try:
+                    assetsObj = Assets.objects.create(**assets)   
+                except Exception, ex:
+                    logger.warn(msg="批量写入资产失败: {ex}".format(ex=str(ex)))
+                if assetsObj:
+                    try:  
+                        if assets.get('assets_type') in ['vmser','server']:
+                            Server_Assets.objects.create(assets=assetsObj,**server_assets)
+                        elif assets.get('assets_type') in ['switch','route','printer','scanner','firewall','storage','wifi']:
+                            Network_Assets.objects.create(assets=assetsObj,**net_assets)                          
+                    except Exception, ex:
+                        logger.warn(msg="批量更新资产失败: {ex}".format(ex=str(ex)))
+                        assetsObj.delete()
         return HttpResponseRedirect('/assets_list')
 
 
@@ -360,10 +406,11 @@ def assets_search(request):
     elif request.method == "POST":  
         AssetIntersection = list(set(request.POST.keys()).intersection(set(AssetFieldsList)))
         ServerAssetIntersection = list(set(request.POST.keys()).intersection(set(ServerAssetFieldsList)))
+        assetsList = []
         data = dict()
         #格式化查询条件
         for (k,v)  in request.POST.items() :
-            if v is not None and v != u'' :
+            if v is not None and v != u'':
                 data[k] = v 
         if list(set(['buy_time' , 'expire_date' , 'vcpu_number',
                      'cpu_core','cpu_number','ram_total',
@@ -424,29 +471,35 @@ def assets_search(request):
                 data['ram_total__lte'] = int(ram_total[1])
             except:
                 pass 
-        server = False                                                                               
-        if len(AssetIntersection) > 0 and len(ServerAssetIntersection) > 0:
-            assetsData = dict()
-            for a in AssetIntersection:
-                for k in data.keys():
-                    if k.find(a) != -1:
-                        assetsData[k] = data[k]
-                        data.pop(k)
-            serverList = [ a.assets_id for a in Server_Assets.objects.filter(**data) ]
-            assetsData['id__in'] = serverList
-            serverList = Assets.objects.filter(**assetsData)             
+            
 
-            
-        elif len(AssetIntersection) > 0 and len(ServerAssetIntersection) == 0:
-            serverList = Assets.objects.filter(**data) 
-            
-        elif len(AssetIntersection) == 0 and len(ServerAssetIntersection) > 0:
-            server = True
-            serverList = Server_Assets.objects.filter(**data) 
+        if data.has_key('ip'):
+            for ds in NetworkCard_Assets.objects.filter(ip=data.get('ip')):
+                if ds.assets not in assetsList:assetsList.append(ds.assets) 
+  
+        else:                                                     
+            if len(AssetIntersection) > 0 and len(ServerAssetIntersection) > 0:
+                assetsData = dict()
+                for a in AssetIntersection:
+                    for k in data.keys():
+                        if k.find(a) != -1:
+                            assetsData[k] = data[k]
+                            data.pop(k)
+                serverList = [ a.assets_id for a in Server_Assets.objects.filter(**data) ]
+                assetsData['id__in'] = serverList
+                assetsList.extend(Assets.objects.filter(**assetsData))             
+                
+            elif len(AssetIntersection) > 0 and len(ServerAssetIntersection) == 0:
+                assetsList.extend(Assets.objects.filter(**data)) 
+                
+            elif len(AssetIntersection) == 0 and len(ServerAssetIntersection) > 0:
+                for ds in Server_Assets.objects.filter(**data):
+                    if ds.assets not in assetsList:assetsList.append(ds.assets)
+                
         baseAssets = getBaseAssets()
         dataList = []
-        for a in serverList:
-            if server:a = a.assets
+        for a in assetsList:
+            assets_id = '''<td class="text-center"><input type="checkbox" value="{aid}" name="ckbox"/></td>'''.format(aid=a.id)
             if a.assets_type == "server":
                 assets_type = '''<td class="text-center"><button  type="button" class="btn btn-default disabled">服务器</button></td>'''
             elif a.assets_type == "vmser":
@@ -465,10 +518,32 @@ def assets_search(request):
                 assets_type = '''<td class="text-center"><button  type="button" class="btn btn-default disabled">存储设备</button></td>'''
             elif a.assets_type == "wifi":
                 assets_type = '''<td class="text-center"><button  type="button" class="btn btn-default disabled">无线设备</button></td>''' 
-            if a.management_ip:management_ip = '''<td class="text-center">{ip}</td>'''.format(ip=a.management_ip)   
-            else:management_ip = '''<td class="text-center">{ip}</td>'''.format(ip=a.server_assets.ip)  
+            nks = ''
+            if a.management_ip:
+                liTags = ''
+                for ns in a.networkcard_assets_set.all():
+                    if ns.ip != 'unkown' and ns.ip !=  a.management_ip:
+                        liTag = '''<li><span class="label label-success">内</span>:<code>{address}</code></li>'''.format(address=ns.ip) 
+                        liTags = liTags + liTag
+                nks = '''<ul class="list-unstyled">
+                            <li><span class="label label-danger">外</span>:<code>{management_ip}</code></li>
+                            {liTags}
+                        </ul>'''.format(management_ip=a.management_ip,liTags=liTags)
+            elif a.server_assets.ip:
+                liTags = ''
+                for ns in a.networkcard_assets_set.all():
+                    if ns.ip != 'unkown' and ns.ip !=  a.server_assets.ip:
+                        liTag = '''<li><span class="label label-success">内</span>:<code>{address}</code></li>'''.format(address=ns.ip) 
+                        liTags = liTags + liTag
+                nks = '''<ul class="list-unstyled">
+                            <li><span class="label label-danger">外</span>:<code>{server_ip}</code></li>
+                            {liTags}
+                        </ul>'''.format(server_ip=a.server_assets.ip,liTags=liTags)
+            management_ip = '''<td class="text-center">{ip}</td>'''.format(ip=nks)  
             name = '''<td class="text-center">{name}</td>'''.format(name=a.name)      
-            model = '''<td class="text-center">{model}</td>'''.format(model=a.model)                                        
+            model = '''<td class="text-center">{model}</td>'''.format(model=a.model)  
+            for p in baseAssets.get('project'):
+                if p.id == a.project:project = '''<td class="text-center">{project}</td>'''.format(project=p.project_name)                                      
             for s in baseAssets.get('service'):
                 if s.id == a.business:service = '''<td class="text-center"><button  type="button" class="btn btn-default disabled">{service}</button></td>'''.format(service=s.service_name)
             if a.status == 0:status = '''<td class="text-center"><button  type="button" class="btn btn-outline btn-success">已上线</button></td>'''
@@ -515,7 +590,7 @@ def assets_search(request):
                      <a href="/assets_mod/{id}" style="text-decoration:none;"><button  type="button" class="btn btn-default"><abbr title="修改资料"><i class="glyphicon glyphicon-edit"></button></i></abbr></a>
                      <button  type="button" class="btn btn-default" onclick="deleteAssets(this,{id})"><i class="glyphicon glyphicon-trash"></i></button>
                  </td>'''.format(id=a.id,assets_type_div=assets_type_div)
-            dataList.append([assets_type,management_ip,name,model,put_zone,service,group,buy_time,status,opt])                                                                                                                                                                                          
+            dataList.append([assets_id,assets_type,management_ip,name,model,put_zone,project,service,group,buy_time,status,opt])                                                                                                                                                                                          
         return JsonResponse({'msg':"数据查询成功","code":200,'data':dataList,'count':0})     
     
 @login_required(login_url='/login')  
@@ -545,17 +620,17 @@ def assets_batch(request):
                 try:
                     assets = Assets.objects.get(id=int(ast))
                 except Exception, ex:
-                    print ex
+                    logger.warn(msg="批量更新获取资产失败: {ex}".format(ex=str(ex)))
                     continue
                 if assets.assets_type in ['vmser','server']:
                     try:
                         server_assets = Server_Assets.objects.get(assets=assets)
-
                     except Exception, ex:
-                        fList.append(assets.management_ip)
+                        logger.warn(msg="批量更新获取服务器资产失败: {ex}".format(ex=str(ex)))
+                        if server_assets.ip not in fList:fList.append(server_assets.ip) 
                         continue
                     serList.append(server_assets.ip)
-                    if server_assets.keyfile == 1:resource.append({"hostname": server_assets.ip, "port": int(server_assets.port)})
+                    if server_assets.keyfile == 1:resource.append({"hostname": server_assets.ip, "port": int(server_assets.port),"username": server_assets.username})
                     else:resource.append({"hostname": server_assets.ip, "port": server_assets.port,"username": server_assets.username, "password": server_assets.passwd})                    
             ANS = ANSRunner(resource)
             ANS.run_model(host_list=serList,module_name='setup',module_args="")
@@ -563,7 +638,11 @@ def assets_batch(request):
             if data:
                 for ds in data:
                     status = ds.get('status')
+                    sip = ds.get('ip') 
                     if status == 0:
+                        assets = Server_Assets.objects.get(ip=ds.get('ip')).assets
+                        assets.model = ds.get('model')
+                        assets.save()
                         try:
                             Server_Assets.objects.filter(ip=ds.get('ip')).update(cpu_number=ds.get('cpu_number'),kernel=ds.get('kernel'),
                                                                                   selinux=ds.get('selinux'),hostname=ds.get('hostname'),
@@ -572,10 +651,30 @@ def assets_batch(request):
                                                                                   swap=ds.get('swap'),ram_total=ds.get('ram_total'),
                                                                                   vcpu_number=ds.get('vcpu_number')
                                                                                   )
-                            sList.append(server_assets.ip)
+                            if sip not in sList:sList.append(sip)
                         except Exception:
-                            fList.append(server_assets.ip)
-                    else:fList.append(server_assets.ip)                                  
+                            if sip not in fList:fList.append(sip) 
+                        for nk in ds.get('nks'):
+                            macaddress = nk.get('macaddress')
+                            count = NetworkCard_Assets.objects.filter(assets=assets,macaddress=macaddress).count()
+                            if count > 0:
+                                try:
+                                    NetworkCard_Assets.objects.filter(assets=assets,macaddress=macaddress).update(assets=assets,device=nk.get('device'),
+                                                                                                                       ip=nk.get('address'),module=nk.get('module'),
+                                                                                                                       mtu=nk.get('mtu'),active=nk.get('active'))
+                                except Exception, ex:
+                                    logger.warn(msg="批量更新更新服务器网卡资产失败: {ex}".format(ex=str(ex)))
+                            else:
+                                try:
+                                    NetworkCard_Assets.objects.create(assets=assets,device=nk.get('device'),
+                                                                  macaddress=nk.get('macaddress'),
+                                                                  ip=nk.get('address'),module=nk.get('module'),
+                                                                  mtu=nk.get('mtu'),active=nk.get('active'))
+                                except Exception, ex:
+                                    logger.warn(msg="批量更新写入服务器网卡资产失败: {ex}".format(ex=str(ex)))                         
+                    else:
+                        if sip not in fList:fList.append(sip) 
+                                                         
             if sList:
                 return JsonResponse({'msg':"数据更新成功","code":200,'data':{"success":sList,"failed":fList}}) 
             else:return JsonResponse({'msg':"数据更新失败","code":500,'data':{"success":sList,"failed":fList}}) 
@@ -608,4 +707,47 @@ def assets_batch(request):
                 assets.delete()                                    
             return JsonResponse({'msg':"数据更新成功","code":200,'data':{"success":sList,"failed":fList}}) 
         else:
-            return JsonResponse({'msg':"操作失败","code":500,'data':"不支持的操作"})                 
+            return JsonResponse({'msg':"操作失败","code":500,'data':"不支持的操作"})    
+        
+@login_required(login_url='/login')
+@permission_required('OpsManage.can_read_assets',login_url='/noperm/')
+def assets_server(request):
+    if request.method == "POST":
+        if request.POST.get('query') in ['service','project','group']:
+            dataList = []
+            if request.POST.get('query') == 'service':
+                for ser in Assets.objects.filter(business=request.POST.get('id')):
+                    dataList.append({"id":ser.server_assets.id,"ip":ser.server_assets.ip})
+            elif request.POST.get('query') == 'group':
+                for ser in Assets.objects.filter(group=request.POST.get('id')):
+                    dataList.append({"id":ser.server_assets.id,"ip":ser.server_assets.ip})                
+            return JsonResponse({'msg':"主机查询成功","code":200,'data':dataList})  
+        else:JsonResponse({'msg':"不支持的操作","code":500,'data':[]})  
+    else:
+        return JsonResponse({'msg':"操作失败","code":500,'data':"不支持的操作"})    
+    
+    
+@login_required(login_url='/login')
+@permission_required('OpsManage.can_read_assets',login_url='/noperm/')    
+def assets_groups(request,id):
+    try:
+        project = Project_Assets.objects.get(id=id)
+    except Project_Assets.DoesNotExist:
+        return render(request,'assets/assets_groups.html',{"user":request.user,"errorInfo":"项目不存在"})
+    serviceList = Service_Assets.objects.filter(project=project)
+    for ds in serviceList:
+        dataList = []
+        for ser in Assets.objects.select_related().filter(business=ds.id):
+            if ser.server_assets.ram_total: ser.server_assets.ram_total =  str(int(ser.server_assets.ram_total) / 1024) + 'GB'
+            else:ser.server_assets.ram_total = '0GB'
+            if ser.server_assets.disk_total: 
+                disk_total =  int(ser.server_assets.disk_total) / 1024 / 1024
+                if disk_total > 1:ser.server_assets.disk_total = str(int(ser.server_assets.disk_total) / 1024 / 1024) + 'TB'
+                else:ser.server_assets.disk_total =  str(int(ser.server_assets.disk_total) / 1024) +  'GB'
+            else:ser.server_assets.disk_total = '0GB'
+            dataList.append(ser)
+            ds.host = dataList
+    totalServer = Assets.objects.filter(project=id).count()
+    return render(request,'assets/assets_groups.html',{"user":request.user,"project":project,
+                                                       "serviceList":serviceList,"totalServer":totalServer})    
+    

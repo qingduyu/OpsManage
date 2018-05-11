@@ -121,7 +121,7 @@
                             <a href="/"><i class="fa fa-dashboard fa-fw"></i> Dashboard</a>
                         </li>
                         <li>
-                            <a href="#"><i class="fa fa-database fa-fw"></i> 资产管理<span class="fa arrow"></span></a>
+                            <a href="#"><i class="fa  fa-bank fa-fw"></i> 资产管理<span class="fa arrow"></span></a>
                             <ul class="nav nav-second-level">
                                 <li>
                                     <a href="/assets_config">基础配置</a>
@@ -206,6 +206,9 @@
                                         <li>
                                             <a href="/apps/">剧本列表</a>
                                         </li>
+                                        {% if user.is_superuser %}
+                                        <li><a href="/roles/">剧本管理</a></li>
+                                        {% endif %}
                                     </ul>
                                     <!-- /.nav-third-level -->
                                 </li>
@@ -215,6 +218,40 @@
                             </ul>
                             <!-- /.nav-second-level -->
                         </li>
+						<li><a href="#"><i class="fa fa-database fa-fw"></i> 数据管理<span
+								class="fa arrow"></span></a>
+							<ul class="nav nav-second-level">
+								<li><a href="#">MySQL<span class="fa arrow"></span></a>
+									<ul class="nav nav-third-level">
+										<li><a href="/db/config/">基础配置</a></li>
+										<li><a href="/db/ops/">管理入口</a></li>											
+									</ul>
+								</li>	
+<!-- 								<li><a href="#">Redis<span class="fa arrow"></span></a>	
+								<li><a href="#">MongoDB<span class="fa arrow"></span></a> -->
+								<li><a href="#">SQL管理<span class="fa arrow"></span></a>
+									<ul class="nav nav-third-level">
+										<li><a href="/db/sql/order/audit/">上线申请</a></li>
+										<li><a href="/db/sql/order/list/1/">工单列表</a></li>
+										<li><a href="/db/sql/order/search/">工单查询</a></li>
+									</ul>
+								</li>															
+								<li><a href="/db/sql/logs/1/">操作日志</a></li>
+							</ul> <!-- /.nav-second-level --></li>		                        
+                        {% if user.is_superuser %}
+						<li><a href="#"><i class="fa fa-tasks fa-fw"></i> 任务调度<span
+								class="fa arrow"></span></a>
+							<ul class="nav nav-second-level">
+								<li><a href="/task_model/">调度类型</a></li>
+								<li><a href="/task_view/">运行日志</a></li>
+							</ul> <!-- /.nav-second-level --></li>     
+						{% endif %} 
+						<li><a href="#"><i class="fa fa-bookmark fa-fw"></i> 运维知识<span
+								class="fa arrow"></span></a>
+							<ul class="nav nav-second-level">
+								<li><a href="/wiki/add/">新建文档</a></li>
+								<li><a href="/wiki/index/">文档列表</a></li>
+							</ul> <!-- /.nav-second-level --></li>							                  
                         <li>
                             <a href="/config"><i class="fa fa-wrench fa-fw"></i> 全局配置</a>
                         </li>                           
@@ -368,6 +405,81 @@
                     <!-- /.panel -->
                 </div> 
      </div>
+     <div class="row">
+          <div class="col-lg-12">
+              <div class="panel panel-default">
+                  <div class="panel-heading">
+                      <i class="fa fa-keyboard-o  fa-fw"></i> 资产查询
+                  </div>
+                  <div class="panel-body">
+				      <div class="col-xs-6 col-sm-3">
+							<div class="form-group">
+								<label class="col-sm-3 control-label">设备状态:</label>
+								<div class="col-sm-8">
+									<select class="form-control"  id="selStatus"  >
+										<option selected="selected" value="">请选择一个类型</option>
+										<option value="0" name="status">已上线</option>	
+										<option value="1" name="status">已下线</option>	
+										<option value="2" name="status">维修中</option>	
+										<option value="3" name="status">已入库</option>	
+										<option value="4" name="status">未使用</option>				   		
+									</select>
+								</div>
+							</div>
+				      </div>                  
+				      <div class="col-xs-6 col-sm-3">
+							<div class="form-group">
+								<label class="col-sm-3 control-label">所属项目:</label>
+								<div class="col-sm-8">
+									 <select class="form-control" id="selProject" >
+									 	<option selected="selected" value="">请选择一个类型</option>
+									 	{% for b in baseAssets.project %}
+									 		<option value="{{b.id}}" name="project">{{b.project_name}}</option>
+									 	{% endfor %}				
+									</select>
+								</div>
+							</div>
+				      </div>                  
+				      <div class="col-xs-6 col-sm-3">
+							<div class="form-group">
+								<label class="col-sm-3 control-label">所属业务:</label>
+								<div class="col-sm-8">
+									 <select class="form-control" id="selBusiness" >
+									 	<option selected="selected" value="">请选择一个类型</option>
+									 	{% for s in baseAssets.service %}
+									 		<option value="{{s.id}}" name="business">{{s.service_name}}</option>
+									 	{% endfor %}										 					
+									</select> 
+								</div>
+							</div>
+				      </div>
+<!-- 				      <div class="col-xs-6 col-sm-3">
+							<div class="form-group">
+								<label class="col-sm-3 control-label">IP地址:</label>
+							<div class="input-group">
+								<input type="text" class="form-control">
+								<span class="input-group-btn">
+									<button class="btn btn-default" type="button">Search</button>
+								</span>
+							</div>								
+							</div>
+				      </div> -->		
+				      <div class="col-xs-6 col-sm-3">
+							<div class="form-group">
+								<label class="col-sm-3 control-label">IP地址:</label>
+								<div class="col-sm-8">
+									<input type="text" id="ip" class="form-control" value="">
+								</div>
+							</div>
+				      </div>				      		      				      
+                  </div>
+                  <div class="panel-footer">
+                  <div id="divSelectedType"></div>
+                  </div>
+              </div>
+          </div>      
+     </div>
+     
 	 <div class="row">
 	 		<div class="col-lg-12">
                     <div class="panel panel-default">
@@ -392,12 +504,29 @@
 									       <th class="text-center">资产编号</th>
 									       <th class="text-center">设备型号</th>
 									       <th class="text-center">放置区域</th>
+									       <th class="text-center">所属项目</th>
 									       <th class="text-center">业务类型</th>
 									       <th class="text-center">使用组</th>
 									       <th class="text-center">购买时间</th>									       
 									       <th class="text-center">设备状态</th>
 									       <th class="text-center">操作</th>
 									    </tr>
+								        <tfoot>
+								            <tr>
+								               <th class="text-center"></th>
+										       <th class="text-center">资产类型</th>
+										       <th class="text-center">管理IP</th>
+										       <th class="text-center">资产编号</th>
+										       <th class="text-center">设备型号</th>
+										       <th class="text-center">放置区域</th>
+										       <th class="text-center">所属项目</th>
+										       <th class="text-center">业务类型</th>
+										       <th class="text-center">使用组</th>
+										       <th class="text-center">购买时间</th>
+										       <th class="text-center">设备状态</th>
+										       <th class="text-center">操作</th>
+								            </tr>
+								        </tfoot>									    
                                 </thead>
                                 <tbody>
                                 	{% for a in  assetsList %}
@@ -424,11 +553,26 @@
 									         			<button  type="button" class="btn btn-default disabled">无线设备</button>									         													         												         												         											         												         			
 									         		{% endif %}
 									         </td>
-									         <td class="text-center">
+									         <td>
 									         	{% if a.management_ip %}
-									         		{{ a.management_ip }}
+													<ul class="list-unstyled">
+						                                <li><span class="label label-danger">外</span>:<code>{{ a.management_ip }}</code></li>
+						                                {% for ds in a.nks %}
+						                                	{% if ds.ip != 'unkown' and ds.ip !=  a.management_ip %}
+						                                		<li><span class="label label-success">内</span>:<code>{{ds.ip}}</code></li>
+						                                	{% endif %}
+						                                {% endfor %}
+						                            </ul>									         			
+									         											         		
 									         	{% else %}
-									         		{{ a.server_assets.ip }}
+													<ul class="list-unstyled">
+						                                <li><span class="label label-danger">外</span>:<code>{{ a.server_assets.ip }}</code></li>
+						                                {% for ds in a.nks %}
+						                                	{% if ds.ip != 'unkown' and ds.ip !=  a.server_assets.ip %}
+						                                		<li><span class="label label-success">内</span>:<code>{{ds.ip}}</code></li>
+						                                	{% endif %}
+						                                {% endfor %}
+						                            </ul>									         		
 									         	{% endif %}
 									         </td>
 									         <td class="text-center">{{ a.name }}</td>
@@ -441,6 +585,13 @@
 									         	{% endfor %}
 									         </td>
 									         <td class="text-center">
+									         	{% for s in baseAssets.project %}
+									         		{% if s.id == a.project %}
+									         			<button  type="button" class="btn btn-default disabled">{{ s.project_name }}</button>	
+									         		{% endif %}
+									         	{% endfor %}								         		
+									         </td>									         
+									         <td class="text-center">
 									         	{% for s in baseAssets.service %}
 									         		{% if s.id == a.business %}
 									         			<button  type="button" class="btn btn-default disabled">{{ s.service_name }}</button>	
@@ -449,7 +600,7 @@
 									         </td>									         
 									         <td class="text-center">
 									         	{% for g in baseAssets.group %}
-									         		{% if g.id == a.put_zone %}
+									         		{% if g.id == a.group %}
 									         			{{ g.name }}
 									         		{% endif %}
 									         	{% endfor %}
@@ -571,6 +722,138 @@
    	<!--   csrf -->
 	<script src="/static/js/csrf.js"></script>
 
+    <script type="text/javascript">
+        var curpage = 1;
+        $(document).ready(function () {       
+
+            //业务类型
+            $('#selBusiness').change(function () {
+                if ($('#selBusiness').val() != "") {
+                    $("#hdnBusiness").val($('#selBusiness').val());
+                    var span = "<span class='label label-success' id='spanBusiness'>" + $("#selBusiness").find("option:selected").text()
+                    + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='business' type='hidden' value='"
+                    + $('#selBusiness').val() + "' /></span> &nbsp;";
+                    if ($("#spanBusiness").length == 0) {
+                        $('#divSelectedType').append(span);
+                    }
+                    else {
+                        $("#spanBusiness").html($("#selBusiness").find("option:selected").text()
+                         + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='business' type='hidden' value='"
+                         + $('#selBusiness').val() + "' /></span> &nbsp;");
+                    }
+                    changepage(1);
+                }
+            })   
+            
+			//设备状态
+            $('#selStatus').change(function () {
+                if ($('#selStatus').val() != "") {
+                    $("#hdnStatus").val($('#selStatus').val());
+                    var span = "<span class='label label-success' id='spanStatus'>" + $("#selStatus").find("option:selected").text()
+                    + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='status' type='hidden' value='"
+                    + $('#selStatus').val() + "' /></span> &nbsp;";
+                    if ($("#spanStatus").length == 0) {
+                        $('#divSelectedType').append(span);
+                    }
+                    else {
+                        $("#spanStatus").html($("#selStatus").find("option:selected").text()
+                         + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='status' type='hidden' value='"
+                         + $('#selStatus').val() + "' /></span> &nbsp;");
+                    }
+                    changepage(1);
+                }
+            })  
+            //ip地址
+            $('#ip').change(function () {
+                if ($('#ip').val() != "") {
+                    var span = "<span class='label label-success' id='spanIp'>" + $("#ip").val()
+                    + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='ip' type='hidden' value='"
+                    + $('#ip').val() + "' /></span> &nbsp;";
+                    if ($("#spanIp").length == 0) {
+                        $('#divSelectedType').append(span);
+                    }
+                    else {
+                        $("#spanIp").html($("#ip").val()
+                         + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='ip' type='hidden' value='"
+                         + $('#ip').val() + "' /></span> &nbsp;");
+                    }
+                    changepage(1);
+                }
+            })             
+			//所属项目
+            $('#selProject').change(function () {
+                if ($('#selProject').val() != "") {
+                    $("#hdnProject").val($('#selProject').val());
+                    var span = "<span class='label label-success' id='spanSelinux'>" + $("#selProject").find("option:selected").text()
+                    + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='project' type='hidden' value='"
+                    + $('#selProject').val() + "' /></span> &nbsp;";
+                    if ($("#spanSelinux").length == 0) {
+                        $('#divSelectedType').append(span);
+                    }
+                    else {
+                        $("#spanSelinux").html($("#selProject").find("option:selected").text()
+                         + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='project' type='hidden' value='"
+                         + $('#selProject').val() + "' /></span> &nbsp;");
+                    }
+                    changepage(1);
+                }
+            })            
+            
+        })
+
+        function search_go() {
+            var parameter = {};
+            $("input[type='hidden']").each(function () {
+                var key = $(this).prop('name');
+                var value = $(this).val();
+                if (key != "csrfmiddlewaretoken"){
+                	parameter[key] = value;
+                }
+                
+            })
+
+            var count = 0;
+            for (var i in parameter) {
+                count += i;
+                break;
+            }
+            if (count == 0) {
+                return false;
+            }
+
+            $.post('/assets_search/', parameter, function (result) {
+                if (result["data"].length > 0) {
+/*                 	document.getElementById("div-search-result").style.display = ""; */
+						 var table = $('#assetsListTable').dataTable();
+						 oSettings = table.fnSettings();
+						 table.fnClearTable(this);
+						 for (var i=0; i<result["data"].length; i++)
+						 {
+						   table.oApi._fnAddData(oSettings, result["data"][i]);
+						 }
+						 oSettings.aiDisplay = oSettings.aiDisplayMaster.slice();
+						 table.fnDraw();                	               	
+                }
+                else{
+                	//没有数据就清空
+                	var table = $('#assetsListTable').dataTable();
+                	table.fnClearTable(this);
+                }
+            })
+        }
+
+        function changepage(pageindex) {
+            curpage = pageindex;
+            search_go();
+        }
+
+        function removeself(obj) {
+            $(obj).parent().remove();
+            changepage(1);
+        }
+        
+
+</script>
 
 <script type="text/javascript"> 
 

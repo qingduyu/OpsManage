@@ -218,12 +218,12 @@
 				      </div>
 				      <div class="col-xs-6 col-sm-3">
 							<div class="form-group">
-								<label class="col-sm-3 control-label">Selinux:</label>
+								<label class="col-sm-3 control-label">所属项目:</label>
 								<div class="col-sm-8">
-									 <select class="form-control" id="selSelinux" >
+									 <select class="form-control" id="selProject" >
 									 	<option selected="selected" value="">请选择一个类型</option>
-									 	{% for b in selinuxList %}
-									 		<option value="{{b}}" name="selinux">{{b}}</option>
+									 	{% for b in baseAssets.project %}
+									 		<option value="{{b.id}}" name="project">{{b.project_name}}</option>
 									 	{% endfor %}				
 									</select>
 								</div>
@@ -373,11 +373,13 @@
 							<table   width="100%" class="table table-striped table-bordered table-hover dataTable no-footer" id="dataTables-Search">						
 	                                <thead>
 										  <tr>
+										  	   <th class="text-center">资产id</th>
 										       <th class="text-center">资产类型</th>
 										       <th class="text-center">管理IP</th>
 										       <th class="text-center">资产编号</th>
 										       <th class="text-center">设备型号</th>
 										       <th class="text-center">放置区域</th>
+										       <th class="text-center">所属项目</th>
 										       <th class="text-center">业务类型</th>
 										       <th class="text-center">使用组</th>
 										       <th class="text-center">购买时间</th>
@@ -386,11 +388,13 @@
 										    </tr>
 									        <tfoot>
 									            <tr>
+									               <th class="text-center">资产id</th>
 											       <th class="text-center">资产类型</th>
 											       <th class="text-center">管理IP</th>
 											       <th class="text-center">资产编号</th>
 											       <th class="text-center">设备型号</th>
 											       <th class="text-center">放置区域</th>
+											       <th class="text-center">所属项目</th>
 											       <th class="text-center">业务类型</th>
 											       <th class="text-center">使用组</th>
 											       <th class="text-center">购买时间</th>
@@ -920,20 +924,20 @@
                     changepage(1);
                 }
             })   
-			//selinux状态
-            $('#selSelinux').change(function () {
-                if ($('#selSelinux').val() != "") {
-                    $("#hdnSelinux").val($('#selSelinux').val());
-                    var span = "<span class='label label-success' id='spanSelinux'>" + $("#selSelinux").find("option:selected").text()
-                    + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='selinux' type='hidden' value='"
-                    + $('#selSelinux').val() + "' /></span> &nbsp;";
+			//所属项目
+            $('#selProject').change(function () {
+                if ($('#selProject').val() != "") {
+                    $("#hdnProject").val($('#selProject').val());
+                    var span = "<span class='label label-success' id='spanSelinux'>" + $("#selProject").find("option:selected").text()
+                    + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='project' type='hidden' value='"
+                    + $('#selProject').val() + "' /></span> &nbsp;";
                     if ($("#spanSelinux").length == 0) {
                         $('#divSelectedType').append(span);
                     }
                     else {
-                        $("#spanSelinux").html($("#selSelinux").find("option:selected").text()
-                         + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='selinux' type='hidden' value='"
-                         + $('#selSelinux').val() + "' /></span> &nbsp;");
+                        $("#spanSelinux").html($("#selProject").find("option:selected").text()
+                         + " <img alt='' src='/static/img/close.png' onclick='removeself(this)' /><input name='project' type='hidden' value='"
+                         + $('#selProject').val() + "' /></span> &nbsp;");
                     }
                     changepage(1);
                 }
@@ -1006,73 +1010,7 @@
             $(obj).parent().remove();
             changepage(1);
         }
-  
- 	   function assetsUpdate(obj, id,ip,type){
-			var btnObj = $(obj);
-			var txt=  "是否确认更新？";
-			var option = {
-					title: "更新主机("+ip+")硬件信息",
-					btn: parseInt("0011",2),
-					onOk: function(){
-						$.ajax({
-							  type: 'POST',
-							  url: '/assets_facts/',
-							  data:{
-									"ip":ip,
-									"server_id":id,
-									"type":type
-								},
-						      success:function(response){			            
-					                if (response["code"]=="200"){ 
-					                	window.wxc.xcConfirm(response["msg"], window.wxc.xcConfirm.typeEnum.success);
-
-					                }
-						        	else{
-						        		window.wxc.xcConfirm(response["msg"], window.wxc.xcConfirm.typeEnum.error);
-						        	}						                
-							},
-				            error:function(response){
-				            	window.wxc.xcConfirm("请求数据错误！", window.wxc.xcConfirm.typeEnum.error);
-				            },		
-							});
-					},
-					onCancel:function(){	
-					},
-					onClose:function(){
-					}
-				}			
-			window.wxc.xcConfirm(txt, "custom", option);
-		}        
- 	   
- 		function deleteAssets(obj,id){
- 			var txt=  "是否确认删除？";
- 			var btnObj = $(obj);
- 			btnObj.attr('disabled',true);
- 			var option = {
- 				title: "删除当前资产",
- 				btn: parseInt("0011",2),
- 				onOk: function(){
- 					$.ajax({
- 						  type: 'DELETE',
- 						  url: '/api/assets/'+id+'/',
- 					      success:function(response){	
- 					    	btnObj.removeAttr('disabled');
- 				            window.wxc.xcConfirm("删除成功", window.wxc.xcConfirm.typeEnum.success);
- 				            location.reload('/assets_list/');
- 					      },
- 			              error:function(response){
- 			            	btnObj.removeAttr('disabled');
- 			            	window.wxc.xcConfirm("删除失败！", window.wxc.xcConfirm.typeEnum.error);	
- 			              }
- 						});
- 				},
- 				onCancel:function(){	
- 				},
- 				onClose:function(){
- 				}
- 			}
- 			window.wxc.xcConfirm(txt, "custom", option);			   
- 		} 	   
+        
 
 </script>
 
