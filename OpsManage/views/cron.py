@@ -12,11 +12,12 @@ from OpsManage.models import Log_Cron_Config
 from django.contrib.auth.decorators import permission_required
 from OpsManage.utils.ansible_api_v2 import ANSRunner
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from dao.assets import AssetsSource
 
 @login_required()
 @permission_required('OpsManage.can_add_cron_config',login_url='/noperm/') 
 def cron_add(request):
-    serverList = Server_Assets.objects.all()
+    serverList = AssetsSource().serverList()
     if request.method == "GET": 
         return render(request,'cron/cron_add.html',{"user":request.user,"serverList":serverList},
                                   )
@@ -91,9 +92,8 @@ def cron_add(request):
         return HttpResponseRedirect('/cron_add')
 
 @login_required()
-@permission_required('OpsManage.can_read_config',login_url='/noperm/') 
+@permission_required('OpsManage.can_read_cron_config',login_url='/noperm/') 
 def cron_list(request,page):
-#     cronList = Cron_Config.objects.select_related().all()
     allCronList = Cron_Config.objects.select_related().all()[0:1000]
     paginator = Paginator(allCronList, 25)          
     try:
@@ -166,7 +166,7 @@ def cron_mod(request,cid):
                                   )                     
         return HttpResponseRedirect('/cron_mod/{id}/'.format(id=cid))
     
-    elif request.method == "DELETE":      
+    elif request.method == "DELETE" and request.user.has_perm('OpsManage.can_delete_cron_config'):     
         try:
             recordCron.delay(cron_user=str(request.user),cron_id=cid,cron_name=cron.cron_name,cron_content="删除计划任务",cron_server=cron.cron_server.ip)
             sList = [cron.cron_server.ip]
@@ -245,5 +245,4 @@ def cron_log(request,page):
             cronList = paginator.page(1)
         except EmptyPage:
             cronList = paginator.page(paginator.num_pages)          
-        return render(request,'cron/cron_log.html',{"user":request.user,"cronList":cronList},
-                                  )
+        return render(request,'cron/cron_log.html',{"user":request.user,"cronList":cronList},)
